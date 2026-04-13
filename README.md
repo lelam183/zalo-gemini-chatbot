@@ -82,6 +82,23 @@ Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 docker compose -f docker-compose.image.gpu.example.yml --profile tunnel up -d --build
 ```
 
+## Hướng dẫn scan mã QR đăng nhập
+
+Bot hỗ trợ 2 cách scan QR:
+
+1. **Scan qua localhost (nhanh nhất)**  
+   Khi bot khởi động và chưa có session, mở:
+   - `http://localhost:3000`
+
+2. **Scan qua file PNG**  
+   QR được lưu thành file:
+   - `./data/qr.png`
+   Mở file này bằng app ảnh trên máy rồi dùng Zalo scan.
+
+Lưu ý:
+- `QR_PORT` mặc định là `3000`.
+- `QR_FILE` mặc định là `./data/qr.png`.
+
 ### 2) Build image từ source rồi chạy
 
 #### CPU nhẹ (dùng `Dockerfile.cpu`)
@@ -163,8 +180,8 @@ Quy ước:
 
 ### 4) Voice/TTS
 
-- `VOICE_ENABLED` — Tùy chọn — Default CPU/GPU: `true` — Bật gửi trả lời bằng voice.
-- `VOICE_ONLY_MODE` — Tùy chọn — Default CPU/GPU: `true` — Ưu tiên chỉ gửi voice (không kèm text).
+- `VOICE_ENABLED` — Tùy chọn — Default CPU/GPU: `false` — Bật gửi trả lời bằng voice (mặc định tắt cho dễ setup khi chưa có domain public).
+- `VOICE_ONLY_MODE` — Tùy chọn — Default CPU/GPU: `false` — Ưu tiên chỉ gửi voice (không kèm text).
 - `TRANSCRIPT` — Tùy chọn — Default CPU/GPU: `false` — Có gửi transcript text sau voice hay không.
 - `TRANSCRIPT_DELAY_MS` — Tùy chọn — Default CPU/GPU: `1000` — Delay gửi transcript (ms).
 - `VOICE_SEND_METHOD` — Tùy chọn — Default CPU/GPU: `voice_url_first` — Chiến lược gửi voice về Zalo.
@@ -173,7 +190,7 @@ Quy ước:
 - `VOICE_NATIVE_TTL_MS` — Tùy chọn — Default CPU/GPU: `60000` — TTL cho chế độ native emulation (ms).
 - `VIENEU_MAX_STRETCH_RATIO` — Tùy chọn — Default CPU/GPU: `2.6` — Ngưỡng co giãn thời lượng audio của VieNeu.
 - `VOICE_PORT` — Tùy chọn — Default CPU/GPU: `3001` — Port HTTP serve voice file.
-- `VOICE_HOST_URL` — **Khuyên dùng (gần như bắt buộc khi gửi voice qua URL)** — Default CPU/GPU: `https://voice.your-domain.com` — URL public để client Zalo tải voice.
+- `VOICE_HOST_URL` — **Khuyên dùng (gần như bắt buộc khi gửi voice qua URL)** — Default CPU/GPU: (rỗng) — URL public để client Zalo tải voice.
 - `VOICE_NAME` — Tùy chọn — Default CPU/GPU: `vi-VN-HoaiMyNeural` — Tên voice fallback.
 - `VOICE_PITCH` — Tùy chọn — Default CPU/GPU: `2` — Pitch voice fallback.
 - `VOICE_TIMEOUT_S` — Tùy chọn — Default CPU/GPU: `300` — Timeout pipeline voice (giây).

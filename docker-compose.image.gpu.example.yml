@@ -1,0 +1,48 @@
+services:
+  bot:
+    image: your-dockerhub-user/zalo-ai:latest
+    container_name: zalo-gemini-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3070:3000"
+      - "3069:3001"
+    environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      SESSION_FILE: /app/data/session.json
+      HISTORY_DIR: /app/data/history
+      DB_PATH: /app/data/history/bot.db
+      # GPU mode
+      VIENEU_GPU_ENABLED: ${VIENEU_GPU_ENABLED:-true}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-0,1}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0,1}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ./data:/app/data
+      - ./hf_cache:/app/hf_cache
+      - ./torch_cache:/app/torch_cache
+      - ./models:/app/models
+    stdin_open: true
+    tty: true
+    gpus:
+      - driver: nvidia
+        device_ids: ["0", "1"]
+        capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0", "1"]
+              capabilities: [gpu]
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: zalo-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - bot

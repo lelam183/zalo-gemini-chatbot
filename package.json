@@ -1,0 +1,21 @@
+{
+  "name": "zalo-gemini-bot",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Zalo group chatbot powered by Google Gemini – with SQLite RAG",
+  "main": "bot.mjs",
+  "scripts": {
+    "start": "node bot.mjs"
+  },
+  "dependencies": {
+    "@jsquash/jxl": "^1.1.2",
+    "better-sqlite3": "^9.6.0",
+    "mammoth": "^1.8.0",
+    "officeparser": "^4.0.4",
+    "pdf-parse": "^1.1.1",
+    "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.33.2",
+    "xlsx": "^0.18.5",
+    "zca-js": "latest"
+  }
+}

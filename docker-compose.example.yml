@@ -1,0 +1,103 @@
+# Example compose with most config inline.
+# Keep secrets in .env (GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN).
+services:
+  bot:
+    build:
+      context: .
+    image: zalo-ai:latest
+    container_name: zalo-gemini-bot
+    restart: unless-stopped
+    ports:
+    - 3070:3000
+    - 3069:3001
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite,gemma-3-27b-it,gemini-3-flash-preview
+      GEMINI_VISION_MODELS: gemini-2.5-flash,gemini-3-flash-preview,gemini-3-pro-preview,gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite
+      GEMINI_SEARCH_MODELS: gemini-2.5-flash-lite,gemini-2.5-flash,gemini-3.1-flash-lite-preview,gemini-3-flash-preview,gemini-2.5-pro
+      GEMINI_AUDIO_MODEL: gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.1-flash-lite-preview,gemini-3-flash-preview,gemini-2.5-pro
+      SYSTEM_PROMPT: 'Yui — bạn cùng lớp KHMT, hay Minecraft, thích cà khịa; hỏi bài
+        thì giải thích nghiêm túc đủ ý. Coi mọi người như người quen thân. Xưng hô
+        linh hoạt theo tâm trạng/context: tao/mày khi thân hoặc gắt, tôi/bạn hoặc
+        tui/bạn khi dịu và nói chuyện bình thường.'
+      GEMINI_TEMPERATURE: '1.1'
+      VIDEO_AI_ENABLED: 'true'
+      VIDEO_AI_PROVIDER: gemini
+      GEMINI_VIDEO_MODELS: gemini-2.5-flash-lite,gemini-3.1-flash-lite-preview,gemini-2.5-flash,gemini-3-flash-preview
+      GEMINI_VIDEO_MODEL: ''
+      GEMINI_VIDEO_TIMEOUT_MS: '90000'
+      GEMINI_VIDEO_POLL_MS: '2500'
+      GEMINI_VIDEO_POLL_TIMEOUT_MS: '120000'
+      YOUTUBE_VIDEO_AI_ENABLED: 'true'
+      VIDEO_ASR_MAX_SECONDS: '120'
+      VIDEO_FORCE_CPU: 'false'
+      VIDEO_LOCAL_FILES_ONLY: 'false'
+      LOCAL_ASR_MODEL: large-v3-turbo
+      LOCAL_ASR_LANG: auto
+      VIDEO_ASR_ALLOWED_LANGS: vi,en,ja
+      LOCAL_ASR_FALLBACK_LANG: vi
+      LOCAL_ASR_BEAM_SIZE: '5'
+      LOCAL_ASR_OOM_FALLBACK_CPU: 'true'
+      LOCAL_ASR_CPU_COMPUTE: int8
+      LOCAL_ASR_DEVICE: cuda
+      LOCAL_ASR_COMPUTE: float16
+      ENABLE_SEARCH: 'false'
+      CAUTION_USERS: Phong Lữ,6023260713651011265,Nôm Nôm,Mã Hoàng Nam
+      GROUP_PREFIX: '"@yui "'
+      BOT_MENTION_ALIASES: yui,commit,bot,ai
+      MEMBER_ALIASES: Phong Lữ:6023260713651011265:Nam,Nôm Nôm,Thầy Nam|Quốc Bảo::QB,Bảo|Hiếu::HieuBC,Hiếu
+        Bê Cê|Nhật Tiến::Súc Vật Hamster, Hamster đầu buồi, Hamster ĐB, Hamster Rách,Tcon|Đại
+        Vinh::Vinh Xô|Võ Thành Phú::Phú Đại|Trần Nhực Yên::HLECon
+      BOT_OWNER_NAME: Lê Lâm
+      BOT_OWNER_UID: ''
+      VOICE_ENABLED: 'true'
+      VOICE_ONLY_MODE: 'true'
+      TRANSCRIPT: 'false'
+      TRANSCRIPT_DELAY_MS: '1000'
+      VOICE_SEND_METHOD: voice_url_first
+      VOICE_OUTPUT_EXT: m4a
+      VOICE_NATIVE_EMULATION: 'true'
+      VOICE_NATIVE_TTL_MS: '60000'
+      VIENEU_MAX_STRETCH_RATIO: '2.6'
+      VOICE_PORT: '3001'
+      VOICE_HOST_URL: https://zalo-voice.lelam.net
+      CLOUDFLARE_TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      VOICE_NAME: vi-VN-HoaiMyNeural
+      VOICE_PITCH: '2'
+      VOICE_TIMEOUT_S: '300'
+      USE_VIENEU_TTS: 'true'
+      VIENEU_GPU_ENABLED: 'true'
+      VIENEU_MODE: turbo
+      VIENEU_MODELS: pnnbao-ump/VieNeu-TTS-v2-Turbo
+      VIENEU_MODEL: pnnbao-ump/VieNeu-TTS-v2-Turbo
+      VIENEU_API_BASE: ''
+      VIENEU_REF_AUDIO: ''
+      GOOGLE_TTS_KEY_PATH: /app/data/gcloud-tts-key.json
+      GOOGLE_TTS_VOICE: vi-VN-Neural2-A
+      SESSION_FILE: ./data/session.json
+      HISTORY_DIR: ./data/history
+      VOICE_TMP_DIR: /app/data/voice_tmp
+      TZ: Asia/Ho_Chi_Minh
+      ACTIVE_CONV_TTL_MS: '120000'
+      NVIDIA_VISIBLE_DEVICES: 0,1
+      CUDA_VISIBLE_DEVICES: 0,1
+      ASR_CUDA_VISIBLE_DEVICES: '0'
+      VOICE_CUDA_VISIBLE_DEVICES: '1'
+      VIDEO_CUDA_VISIBLE_DEVICES: '1'
+      VOICE_FILE_TTL_HOURS: '720'
+    volumes:
+    - ./data:/app/data
+    - ./hf_cache:/app/hf_cache
+    - ./torch_cache:/app/torch_cache
+    - ./models:/app/models
+    stdin_open: true
+    tty: true
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: zalo-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+    - bot

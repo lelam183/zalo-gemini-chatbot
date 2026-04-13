@@ -1,0 +1,60 @@
+# Secrets and local environment
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.cpu.example
+!.env.gpu.example
+
+# Local compose (machine-specific)
+docker-compose.yml
+docker-compose.gpu.yml
+!docker-compose.example.yml
+!docker-compose.image.cpu.example.yml
+!docker-compose.image.gpu.example.yml
+
+# Runtime/session data
+data/
+!data/.gitkeep
+!data/.gitignore
+
+# Local generated artifacts
+*.log
+logs/
+tmp/
+temp/
+*.pid
+*.sqlite
+*.db
+
+# Caches and models
+hf_cache/
+torch_cache/
+torch_wheels/
+models/
+torch/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Voice sample assets
+voice-samples/*
+!voice-samples/data/
+voice-samples/data/*
+!voice-samples/data/ref_audio/
+voice-samples/data/ref_audio/*
+!voice-samples/data/ref_audio/arisu.wav
+!voice-samples/data/ref_audio/hutao.wav
+!voice-samples/data/ref_audio/miku.wav
+test_gwen_params.py
+test_import_qwen.py

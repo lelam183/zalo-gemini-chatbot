@@ -1,0 +1,163 @@
+# syntax=docker/dockerfile:1.7
+# ═══════════════════════════════════════════════════════════════════════════════
+# Zalo AI Bot - Production Dockerfile
+# Optimized for: BuildKit caching, NVIDIA GPU, fast rebuilds, minimal size
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Stage 1: Node.js builder (lightweight native modules) ──────────────────────
+FROM node:20-slim AS node-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
+
+# ── Stage 2: Runtime image (PyTorch + ML stack) ───────────────────────────────
+FROM node:20-slim
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 1: System Dependencies (rarely changes → high cache hit)
+# ────────────────────────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dumb-init \
+    python3 python3-pip python3-venv python3-dev \
+    gcc g++ make \
+    libgomp1 \
+    ffmpeg libsndfile1 sox \
+    git wget curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 2: Environment & CUDA Paths
+# ────────────────────────────────────────────────────────────────────────────────
+ENV HF_HOME=/app/hf_cache \
+    TRANSFORMERS_CACHE=/app/hf_cache \
+    TORCH_HOME=/app/torch_cache \
+    LD_LIBRARY_PATH=/usr/local/lib/python3.11/dist-packages/nvidia/cudnn/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/nccl/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/nccl/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/cublas/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/cuda_runtime/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/cusparse/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cusparse/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/cusolver/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cusolver/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/cufft/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/cufft/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/curand/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/curand/lib:\
+/usr/local/lib/python3.11/dist-packages/nvidia/nvjitlink/lib:\
+/usr/local/lib/python3.11/site-packages/nvidia/nvjitlink/lib:${LD_LIBRARY_PATH}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 3: PyTorch + NVIDIA Libraries (pip install)
+# ────────────────────────────────────────────────────────────────────────────────
+# Install torch + torchaudio
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    torch torchaudio
+
+# Install NVIDIA CUDA runtime libraries
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    "nvidia-cudnn-cu12==9.20.0.48" \
+    "nvidia-nccl-cu12==2.28.3"
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 5: Register NVIDIA Libraries with Dynamic Linker
+# Generates /etc/ld.so.conf.d/nvidia-python.conf
+# ────────────────────────────────────────────────────────────────────────────────
+RUN python3 -c 'import os, site; \
+paths = list(site.getsitepackages()) + ["/usr/local/lib/python3.11/dist-packages", "/usr/local/lib/python3.11/site-packages"]; \
+paths = [p for p in dict.fromkeys(paths) if os.path.isdir(p)]; \
+subdirs = ["nvidia/cudnn/lib", "nvidia/nccl/lib", "nvidia/cublas/lib", "nvidia/cuda_runtime/lib", "nvidia/cufft/lib", "nvidia/curand/lib", "nvidia/cusolver/lib", "nvidia/cusparse/lib", "nvidia/nvjitlink/lib"]; \
+found = [os.path.join(b, s) for b in paths for s in subdirs if os.path.isdir(os.path.join(b, s))]; \
+os.makedirs("/etc/ld.so.conf.d", exist_ok=True); \
+open("/etc/ld.so.conf.d/nvidia-python.conf", "w").writelines(p + "\n" for p in found); \
+print(f"✓ Registered {len(found)} NVIDIA library paths")'
+
+# Final ldconfig update
+RUN ldconfig && \
+    (ldconfig -p | grep -q "libcudnn.so.9" && echo "✓ Final ldconfig cache updated (libcudnn.so.9 found)") || \
+    (echo "ERROR: libcudnn.so.9 not found in dynamic linker cache. Ensure nvidia-cudnn-cu12==9.20.0.48 installs correctly from pip." >&2; exit 1)
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 6: Core Dependencies
+# ────────────────────────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    "numpy>=1.26,<3" "pillow>=10.0.0"
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 7: Audio Processing (Whisper ASR)
+# ────────────────────────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    soundfile scipy
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    faster-whisper yt-dlp
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 9: VieNeu TTS Runtime
+# ────────────────────────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    onnxruntime-gpu
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages \
+    'vieneu[gpu]'
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 9.5: Re-pin NVIDIA libs (prevent dependency downgrades)
+# Some later pip installs can downgrade/overwrite cuDNN; force the final image to
+# contain a cuDNN9 wheel that provides libcudnn.so.9.
+# ────────────────────────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages --upgrade --force-reinstall \
+    "nvidia-cudnn-cu12==9.20.0.48" \
+    "nvidia-nccl-cu12==2.28.3"
+
+RUN ldconfig && \
+    (ldconfig -p | grep -q "libcudnn.so.9" && echo "✓ libcudnn.so.9 available in final image") || \
+    (echo "ERROR: libcudnn.so.9 still missing in final image (likely nvidia-cudnn-cu12 downgrade). Check installed versions." >&2; \
+     python3 -c "import pkgutil, sys; import pkg_resources; print('nvidia-cudnn-cu12', pkg_resources.get_distribution('nvidia-cudnn-cu12').version)" || true; \
+     exit 1)
+
+# Ensure NCCL provides the symbol Torch expects (avoids runtime: undefined symbol ncclCommWindowDeregister)
+RUN python3 - <<'PY'
+import ctypes
+lib = ctypes.CDLL("libnccl.so.2")
+getattr(lib, "ncclCommWindowDeregister")
+print("✓ NCCL symbol ncclCommWindowDeregister found")
+PY
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 10: Application Code & Data Directories
+# ────────────────────────────────────────────────────────────────────────────────
+WORKDIR /app
+
+# Copy Node modules from builder
+COPY --from=node-builder /app/node_modules ./node_modules
+
+# Copy application code
+COPY bot.mjs voice_pipeline.py asr_local.py ./
+
+# Bundle local voice clone samples into image
+COPY voice-samples/data/ref_audio/arisu.wav voice-samples/data/ref_audio/hutao.wav voice-samples/data/ref_audio/miku.wav /app/voice_samples/
+
+# Create data directories
+RUN mkdir -p /app/data /app/data/voice_tmp /app/models /app/voice_samples
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LAYER 11: Entrypoint
+# ────────────────────────────────────────────────────────────────────────────────
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "bot.mjs"]

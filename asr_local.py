@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 import sys
+import threading
+import time
 
 
 def _is_cuda_oom(err: Exception) -> bool:
@@ -42,6 +44,31 @@ def _pick_fallback_lang(allowed: set[str], preferred: str) -> str:
     if p in allowed:
         return p
     return sorted(allowed)[0]
+
+
+class _ProgressTicker:
+    def __init__(self, label: str):
+        self.label = label
+        self._stop = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        print(f"[asr_local] {self.label} done", file=sys.stderr)
+
+    def _run(self):
+        i = 0
+        while not self._stop.is_set():
+            print(f"[asr_local] {self.label} ... {i}s", file=sys.stderr)
+            i += 1
+            time.sleep(1.0)
 
 
 def _transcribe_with_policy(model, audio_path: str, args, beam_size: int, vad: bool, allowed: set[str] | None):
@@ -130,7 +157,8 @@ def main():
     model = None
     for c in compute_candidates:
         try:
-            model = WhisperModel(args.model, device=device, compute_type=c, download_root=download_root)
+            with _ProgressTicker(f"loading model={args.model} compute={c}"):
+                model = WhisperModel(args.model, device=device, compute_type=c, download_root=download_root)
             last_err = None
             break
         except Exception as e:
@@ -153,7 +181,8 @@ def main():
             raise
         print("[asr_local] CUDA OOM -> retry on CPU", file=sys.stderr)
         cpu_compute = os.environ.get("LOCAL_ASR_CPU_COMPUTE", "int8").strip().lower() or "int8"
-        model_cpu = WhisperModel(args.model, device="cpu", compute_type=cpu_compute, download_root=download_root)
+        with _ProgressTicker(f"loading cpu fallback model={args.model} compute={cpu_compute}"):
+            model_cpu = WhisperModel(args.model, device="cpu", compute_type=cpu_compute, download_root=download_root)
         text, info = _transcribe_with_policy(
             model_cpu,
             args.audio,

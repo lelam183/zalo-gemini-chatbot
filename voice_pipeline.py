@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import traceback
 
 # Mặc định cho phép tải model nếu chưa có cache local.
@@ -41,6 +43,31 @@ def log_runtime_diag() -> None:
         print(f"[voice_pipeline] cpu_flags={cpu_flags}", file=sys.stderr)
     except Exception as e:
         print(f"[voice_pipeline] diag error: {e}", file=sys.stderr)
+
+
+class _ProgressTicker:
+    def __init__(self, label: str):
+        self.label = label
+        self._stop = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        print(f"[voice_pipeline] {self.label} done", file=sys.stderr)
+
+    def _run(self):
+        i = 0
+        while not self._stop.is_set():
+            print(f"[voice_pipeline] {self.label} ... {i}s", file=sys.stderr)
+            i += 1
+            time.sleep(1.0)
 
 
 def convert_audio(input_path: str, output_path: str, fmt: str) -> bool:
@@ -114,9 +141,11 @@ def vieneu_tts_to_wav(text: str, out_wav: str, ref_audio_override: str | None = 
             except Exception:
                 pass
         try:
-            tts = Vieneu(device="cuda" if use_gpu else "cpu")
+            with _ProgressTicker("loading VieNeu model (HF cache/download)"):
+                tts = Vieneu(device="cuda" if use_gpu else "cpu")
         except TypeError:
-            tts = Vieneu() # Fallback if Vieneu does not support device arg
+            with _ProgressTicker("loading VieNeu model (legacy init)"):
+                tts = Vieneu() # Fallback if Vieneu does not support device arg
         ref_audio = ref_audio_override or os.environ.get("VIENEU_REF_AUDIO", "").strip()
         voice_data = None
         if ref_audio:

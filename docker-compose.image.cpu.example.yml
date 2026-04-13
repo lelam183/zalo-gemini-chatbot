@@ -8,8 +8,8 @@ services:
     env_file:
       - .env
     ports:
-      - "3070:3000"
-      - "3069:3001"
+      - "3000:3000"
+      - "3001:3001"
     environment:
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
       SESSION_FILE: /app/data/session.json

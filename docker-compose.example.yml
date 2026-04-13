@@ -6,8 +6,8 @@ services:
   bot:
     build:
       context: .
-      dockerfile: Dockerfile.gpu
-    image: zalo-ai:latest
+      dockerfile: Dockerfile.cpu
+    image: zalo-ai:cpu
     restart: unless-stopped
     env_file:
       - .env
@@ -19,6 +19,10 @@ services:
       SESSION_FILE: /app/data/session.json
       HISTORY_DIR: /app/data/history
       DB_PATH: /app/data/history/bot.db
+      # CPU default mode
+      VIENEU_GPU_ENABLED: "false"
+      NVIDIA_VISIBLE_DEVICES: ""
+      CUDA_VISIBLE_DEVICES: ""
     volumes:
       - ./data:/app/data
       - ./hf_cache:/app/hf_cache

@@ -19,8 +19,8 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 - `voice_pipeline.py`: synth voice + convert audio format.
 - `Dockerfile.gpu`: image đầy đủ (GPU-friendly).
 - `Dockerfile.cpu`: image CPU tối giản, nhẹ hơn.
-- `docker-compose.image.cpu.example.yml`: chạy bằng image có sẵn CPU.
-- `docker-compose.image.gpu.example.yml`: chạy bằng image có sẵn GPU.
+- `docker-compose.image.cpu.example.yml`: file compose để build/chạy cấu hình CPU.
+- `docker-compose.image.gpu.example.yml`: file compose để build/chạy cấu hình GPU.
 - `docker-compose.gpu.example.yml`: biến thể GPU example dùng image có sẵn.
 - `.env.cpu.example`, `.env.gpu.example`: file mẫu biến môi trường.
 
@@ -47,7 +47,7 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 
 ## Hướng dẫn Docker Compose (rõ ràng, theo từng trường hợp)
 
-### 1) Chạy bằng image có sẵn (khuyên dùng cho user)
+### 1) Chạy bằng các file compose build (khuyên dùng)
 
 #### CPU
 
@@ -56,13 +56,13 @@ Image dùng sẵn: `ghcr.io/lam183/zalo-ai-cpu:latest`
 ```bash
 cp .env.cpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.image.cpu.example.yml up -d
+docker compose -f docker-compose.image.cpu.example.yml up -d --build
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.image.cpu.example.yml --profile tunnel up -d
+docker compose -f docker-compose.image.cpu.example.yml --profile tunnel up -d --build
 ```
 
 #### GPU
@@ -73,13 +73,13 @@ Image dùng sẵn: `ghcr.io/lam183/zalo-ai-gpu:latest`
 ```bash
 cp .env.gpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.image.gpu.example.yml up -d
+docker compose -f docker-compose.image.gpu.example.yml up -d --build
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.image.gpu.example.yml --profile tunnel up -d
+docker compose -f docker-compose.image.gpu.example.yml --profile tunnel up -d --build
 ```
 
 ### 2) Build image từ source rồi chạy

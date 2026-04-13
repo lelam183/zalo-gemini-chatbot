@@ -19,8 +19,9 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 - `voice_pipeline.py`: synth voice + convert audio format.
 - `Dockerfile.gpu`: image đầy đủ (GPU-friendly).
 - `Dockerfile.cpu`: image CPU tối giản, nhẹ hơn.
-- `docker-compose.image.cpu.example.yml`: build trực tiếp từ `Dockerfile.cpu` (CPU).
-- `docker-compose.image.gpu.example.yml`: chạy bằng image có sẵn (GPU).
+- `docker-compose.image.cpu.example.yml`: chạy bằng image có sẵn CPU.
+- `docker-compose.image.gpu.example.yml`: chạy bằng image có sẵn GPU.
+- `docker-compose.gpu.example.yml`: biến thể GPU example dùng image có sẵn.
 - `.env.cpu.example`, `.env.gpu.example`: file mẫu biến môi trường.
 
 ## Package và model đang dùng
@@ -28,7 +29,7 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 ### Node.js
 
 - `zca-js`, `better-sqlite3`, `sharp`, `@jsquash/jxl`
-- `pdf-parse`, `xlsx`, `mammoth`, `officeparser`
+- `pdf-parse`, `exceljs`, `mammoth`, `officeparser`
 - `qrcode-terminal`
 
 ### Python
@@ -50,27 +51,28 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 
 #### CPU
 
+Image dùng sẵn: `ghcr.io/lam183/zalo-ai-cpu:latest`
+
 ```bash
 cp .env.cpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker build -f Dockerfile.cpu -t zalo-ai:cpu .
-docker compose -f docker-compose.image.cpu.example.yml up -d --build
+docker compose -f docker-compose.image.cpu.example.yml up -d
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.image.cpu.example.yml --profile tunnel up -d --build
+docker compose -f docker-compose.image.cpu.example.yml --profile tunnel up -d
 ```
 
 #### GPU
 
 Yêu cầu host có NVIDIA driver + `nvidia-container-toolkit`.
+Image dùng sẵn: `ghcr.io/lam183/zalo-ai-gpu:latest`
 
 ```bash
 cp .env.gpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker build -t zalo-ai:gpu .
 docker compose -f docker-compose.image.gpu.example.yml up -d
 ```
 

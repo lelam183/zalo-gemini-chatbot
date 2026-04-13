@@ -10,12 +10,12 @@
   "dependencies": {
     "@jsquash/jxl": "^1.1.2",
     "better-sqlite3": "^9.6.0",
+    "exceljs": "^4.4.0",
     "mammoth": "^1.8.0",
-    "officeparser": "^4.0.4",
+    "officeparser": "^6.0.7",
     "pdf-parse": "^1.1.1",
     "qrcode-terminal": "^0.12.0",
     "sharp": "^0.33.2",
-    "xlsx": "^0.18.5",
     "zca-js": "latest"
   }
 }

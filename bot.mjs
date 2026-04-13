@@ -2716,7 +2716,7 @@ function startQrServer() {
 function stopQrServer() { if (qrServer) { qrServer.close(); qrServer = null; } }
 
 // ── Detect content type ───────────────────────────────────────────────────────
-const FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|txt|csv|json|md|js|ts|py|html?|xml|yaml|yml|log|sh|sql|ini|env|zip|rar|7z)$/i;
+const FILE_EXT_RE = /\.(pdf|docx?|xlsx|pptx?|txt|csv|json|md|js|ts|py|html?|xml|yaml|yml|log|sh|sql|ini|env|zip|rar|7z)$/i;
 
 function detectContentType(message) {
   let c = message.data?.content;
@@ -2861,7 +2861,7 @@ async function readFileContent(content) {
     // Chỉ xử lý khi URL là Zalo media HOẶC có extension file hợp lệ
     if (!isZaloMediaUrl(fileUrl) && /^https?:\/\//i.test(fileUrl)) {
       const SUPPORTED_FILE_EXTS = new Set([
-        '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt',
+        '.pdf', '.docx', '.doc', '.xlsx', '.pptx', '.ppt',
         '.csv', '.txt', '.md', '.json', '.js', '.ts', '.py', '.html',
         '.xml', '.yaml', '.yml', '.log', '.ini', '.env', '.sh', '.sql',
       ]);
@@ -2909,28 +2909,41 @@ async function readFileContent(content) {
       }
     }
 
-    // ── XLSX/XLS ─────────────────────────────────────────────────────────────
-    if (ext === ".xlsx" || ext === ".xls") {
+    // ── XLSX (Excel modern format) ──────────────────────────────────────────
+    if (ext === ".xlsx") {
       try {
-        const XLSX = await import("xlsx");
+        const ExcelJS = await import("exceljs");
         const res = await fetch(fileUrl, { signal: AbortSignal.timeout(60_000) });
         if (!res.ok) return { ok: false, reason: `Tải Excel thất bại (HTTP ${res.status}).` };
         const buf = Buffer.from(await res.arrayBuffer());
-        const workbook = XLSX.read(buf, { type: "buffer" });
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buf);
         const parts = [];
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          const csv = XLSX.utils.sheet_to_csv(sheet, { FS: " | " });
-          if (csv.trim()) parts.push(`=== Sheet: ${sheetName} ===\n${csv}`);
+        for (const sheet of workbook.worksheets) {
+          const rows = [];
+          sheet.eachRow({ includeEmpty: false }, (row) => {
+            const values = row.values.slice(1).map(v => {
+              if (v === null || v === undefined) return "";
+              if (typeof v === "object") return String(v.text ?? v.result ?? "");
+              return String(v);
+            });
+            const line = values.join(" | ").trim();
+            if (line) rows.push(line);
+          });
+          if (rows.length) parts.push(`=== Sheet: ${sheet.name} ===\n${rows.join("\n")}`);
         }
         const text = parts.join("\n\n");
         if (!text.trim()) return { ok: false, reason: "File Excel trống." };
         const truncated = text.length > MAX_FILE_CHARS;
         return { ok: true, text: text.slice(0, MAX_FILE_CHARS), fileName, totalChars: text.length, truncated };
       } catch (e) {
-        console.error("[XLSX]", e.message);
+        console.error("[XLSX/exceljs]", e.message);
         return { ok: false, reason: `Lỗi đọc Excel: ${e.message}` };
       }
+    }
+
+    if (ext === ".xls") {
+      return { ok: false, reason: "Định dạng .xls cũ không còn được hỗ trợ vì lý do bảo mật. Vui lòng chuyển sang .xlsx." };
     }
 
     // ── PPTX/PPT ─────────────────────────────────────────────────────────────
@@ -2976,11 +2989,11 @@ async function readFileContent(content) {
       return { ok: true, text: text.slice(0, MAX_FILE_CHARS), fileName, totalChars: text.length, truncated };
     }
 
-    return { ok: false, reason: `Chưa hỗ trợ "${ext || "(không rõ)"}". Hỗ trợ: txt md csv json js py html pdf docx xlsx xls pptx ppt` };
+    return { ok: false, reason: `Chưa hỗ trợ "${ext || "(không rõ)"}". Hỗ trợ: txt md csv json js py html pdf docx xlsx pptx ppt` };
   } catch (e) { return { ok: false, reason: e.message }; }
 }
 
-const QUOTE_FILE_EXTS = new Set([".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+const QUOTE_FILE_EXTS = new Set([".pdf", ".docx", ".doc", ".xlsx", ".pptx", ".ppt",
   ".txt", ".csv", ".json", ".md", ".js", ".ts", ".py", ".html", ".xml", ".yaml", ".yml"]);
 
 function extractQuoteData(message) {

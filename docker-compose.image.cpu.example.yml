@@ -1,10 +1,6 @@
 services:
   bot:
-    # Build local CPU image from source
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-    image: zalo-ai:cpu
+    image: ghcr.io/lam183/zalo-ai-cpu:latest
     restart: unless-stopped
     env_file:
       - .env
@@ -20,18 +16,25 @@ services:
       VIENEU_GPU_ENABLED: "false"
       NVIDIA_VISIBLE_DEVICES: ""
       CUDA_VISIBLE_DEVICES: ""
+      # Voicechat is OFF by default in this example.
+      # To enable voicechat: set VOICE_ENABLED=true, set a valid VOICE_HOST_URL,
+      # and run with tunnel profile (or provide your own public reverse proxy).
+      VOICE_ENABLED: "false"
+      VOICE_ONLY_MODE: "false"
+      VOICE_HOST_URL: ""
     volumes:
       - ./data:/app/data
       - ./hf_cache:/app/hf_cache
       - ./torch_cache:/app/torch_cache
       - ./models:/app/models
-    
-  tunnel:
-    profiles: ["tunnel"]
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - bot
+
+  # Uncomment to expose VOICE_HOST_URL via Cloudflare Tunnel:
+  # tunnel:
+  #   profiles: ["tunnel"]
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     - bot

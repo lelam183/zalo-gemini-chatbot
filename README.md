@@ -19,9 +19,8 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 - `voice_pipeline.py`: synth voice + convert audio format.
 - `Dockerfile.gpu`: image đầy đủ (GPU-friendly).
 - `Dockerfile.cpu`: image CPU tối giản, nhẹ hơn.
-- `docker-compose.image.cpu.example.yml`: file compose để build/chạy cấu hình CPU.
-- `docker-compose.image.gpu.example.yml`: file compose để build/chạy cấu hình GPU.
-- `docker-compose.gpu.example.yml`: biến thể GPU example dùng image có sẵn.
+- `docker-compose.cpu.example.yml`: file compose CPU mặc định (dễ dùng).
+- `docker-compose.gpu.example.yml`: file compose GPU mặc định (dễ dùng).
 - `.env.cpu.example`, `.env.gpu.example`: file mẫu biến môi trường.
 
 ## Package và model đang dùng
@@ -47,20 +46,20 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 
 ## Hướng dẫn Docker Compose (rõ ràng, theo từng trường hợp)
 
-### 1) Chạy bằng các file compose build (khuyên dùng)
+### 1) Khuyên dùng cho user (không cần tự build image)
 
 #### CPU
 
 ```bash
 cp .env.cpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.image.cpu.example.yml up -d --build
+docker compose -f docker-compose.cpu.example.yml up -d
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.image.cpu.example.yml --profile tunnel up -d --build
+docker compose -f docker-compose.cpu.example.yml --profile tunnel up -d
 ```
 
 #### GPU
@@ -70,13 +69,13 @@ Yêu cầu host có NVIDIA driver + `nvidia-container-toolkit`.
 ```bash
 cp .env.gpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.image.gpu.example.yml up -d --build
+docker compose -f docker-compose.gpu.example.yml up -d
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.image.gpu.example.yml --profile tunnel up -d --build
+docker compose -f docker-compose.gpu.example.yml --profile tunnel up -d
 ```
 
 ## Hướng dẫn scan mã QR đăng nhập
@@ -96,7 +95,14 @@ Lưu ý:
 - `QR_PORT` mặc định là `3000`.
 - `QR_FILE` mặc định là `./data/qr.png`.
 
-### 2) Build image từ source rồi chạy
+### 2) Build image từ source (dùng file `docker-compose.image.*`)
+
+Lưu ý quan trọng: các `Dockerfile` dùng `RUN --mount=...` nên **bắt buộc BuildKit/buildx**.
+Nếu gặp lỗi `the --mount option requires BuildKit` hoặc `buildx component is missing`, cài buildx rồi build bằng:
+
+```bash
+docker buildx build --load -f Dockerfile.cpu -t zalo-ai:cpu .
+```
 
 #### CPU nhẹ (dùng `Dockerfile.cpu`)
 

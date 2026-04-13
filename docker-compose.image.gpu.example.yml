@@ -15,14 +15,14 @@ services:
       SESSION_FILE: /app/data/session.json
       HISTORY_DIR: /app/data/history
       DB_PATH: /app/data/history/bot.db
-      # GPU mode
+      # Chế độ GPU
       VIENEU_GPU_ENABLED: ${VIENEU_GPU_ENABLED:-true}
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # Voicechat is OFF by default in this example.
-      # To enable voicechat: set VOICE_ENABLED=true, set a valid VOICE_HOST_URL,
-      # and run with tunnel profile (or provide your own public reverse proxy).
+      # Voicechat đang TẮT mặc định trong file mẫu này.
+      # Muốn bật voicechat: đặt VOICE_ENABLED=true, đặt VOICE_HOST_URL hợp lệ,
+      # rồi chạy kèm profile tunnel (hoặc dùng reverse proxy công khai của riêng bạn).
       VOICE_ENABLED: "false"
       VOICE_ONLY_MODE: "false"
       VOICE_HOST_URL: ""
@@ -33,7 +33,7 @@ services:
       - ./models:/app/models
     gpus: all
 
-  # Uncomment to expose VOICE_HOST_URL via Cloudflare Tunnel:
+  # Bỏ comment để phát VOICE_HOST_URL ra URL công khai qua Cloudflare Tunnel:
   # tunnel:
   #   profiles: ["tunnel"]
   #   image: cloudflare/cloudflared:latest

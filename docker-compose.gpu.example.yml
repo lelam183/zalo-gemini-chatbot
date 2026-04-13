@@ -16,9 +16,9 @@ services:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # Voicechat is OFF by default in this example.
-      # To enable: set VOICE_ENABLED=true and VOICE_HOST_URL=https://voice.your-domain.com
-      # Then uncomment tunnel service below (or use your own reverse proxy).
+      # Voicechat đang TẮT mặc định trong file mẫu này.
+      # Muốn bật: đặt VOICE_ENABLED=true và VOICE_HOST_URL=https://voice.your-domain.com
+      # Sau đó bỏ comment service tunnel bên dưới (hoặc dùng reverse proxy riêng).
       VOICE_ENABLED: "false"
       VOICE_ONLY_MODE: "false"
       VOICE_HOST_URL: ""

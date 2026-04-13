@@ -1,7 +1,7 @@
-# Community-style sample compose:
-# - keep configuration in .env via env_file
-# - avoid hardcoding large env blocks in compose
-# - keep optional services behind profiles
+# File compose mẫu theo kiểu cộng đồng:
+# - giữ cấu hình trong .env qua env_file
+# - tránh nhét block env quá dài trong compose
+# - các service tùy chọn để sau profile
 services:
   bot:
     build:
@@ -19,7 +19,7 @@ services:
       SESSION_FILE: /app/data/session.json
       HISTORY_DIR: /app/data/history
       DB_PATH: /app/data/history/bot.db
-      # CPU default mode
+      # Mặc định chạy an toàn theo CPU
       VIENEU_GPU_ENABLED: "false"
       NVIDIA_VISIBLE_DEVICES: ""
       CUDA_VISIBLE_DEVICES: ""

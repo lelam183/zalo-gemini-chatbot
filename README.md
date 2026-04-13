@@ -1,6 +1,6 @@
 # Zalo AI Bot (Gemini + Whisper + VieNeu)
 
-Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/video/voice chat, và trả lời bằng giọng nói tiếng Việt.
+Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/video/voice chat, và trả lời bằng giọng nói tiếng Việt. (Bot hiện tại khá mất dạy nếu muốn sửa lại tính cách của bot thì vào source code sửa lại. Tôi lười thêm environment vào cho Docker Image quá :3)
 
 ## Tính năng chính
 

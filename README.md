@@ -53,13 +53,14 @@ Bot chat nhóm Zalo, hỗ trợ hội thoại tự nhiên, phân tích ảnh/vid
 ```bash
 cp .env.cpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.cpu.example.yml up -d
+cp docker-compose.cpu.example.yml docker-compose.yml
+docker compose up -d
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.cpu.example.yml up -d
+docker compose up -d
 ```
 
 #### GPU
@@ -69,13 +70,14 @@ Yêu cầu host có NVIDIA driver + `nvidia-container-toolkit`.
 ```bash
 cp .env.gpu.example .env
 # sửa GEMINI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN, VOICE_HOST_URL...
-docker compose -f docker-compose.gpu.example.yml up -d
+cp docker-compose.gpu.example.yml docker-compose.yml
+docker compose up -d
 ```
 
 Nếu muốn chạy cả Cloudflare Tunnel cùng lúc:
 
 ```bash
-docker compose -f docker-compose.gpu.example.yml up -d
+docker compose up -d
 ```
 
 ## Hướng dẫn scan mã QR đăng nhập
@@ -116,7 +118,8 @@ docker buildx build --load --build-arg PRELOAD_VIENEU=false -f Dockerfile.cpu -t
 ```bash
 cp .env.cpu.example .env
 docker build -f Dockerfile.cpu -t zalo-ai:cpu .
-docker compose -f docker-compose.image.cpu.example.yml up -d --build
+cp docker-compose.image.cpu.example.yml docker-compose.yml
+docker compose up -d --build
 ```
 
 #### GPU (dùng `Dockerfile.gpu`)
@@ -124,7 +127,8 @@ docker compose -f docker-compose.image.cpu.example.yml up -d --build
 ```bash
 cp .env.gpu.example .env
 docker build -f Dockerfile.gpu -t zalo-ai:gpu .
-docker compose -f docker-compose.image.gpu.example.yml up -d --build
+cp docker-compose.image.gpu.example.yml docker-compose.yml
+docker compose up -d --build
 ```
 
 ## Vì sao cần Cloudflare Tunnel?

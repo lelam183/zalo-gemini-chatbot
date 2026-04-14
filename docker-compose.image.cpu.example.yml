@@ -17,12 +17,9 @@ services:
       DB_PATH: /app/data/history/bot.db
       # Chế độ CPU
       VIENEU_GPU_ENABLED: "false"
-      NVIDIA_VISIBLE_DEVICES: ""
-      CUDA_VISIBLE_DEVICES: ""
       LOCAL_ASR_DEVICE: "cpu"
       LOCAL_ASR_COMPUTE: "int8"
       VIDEO_FORCE_CPU: "true"
-      ASR_CUDA_VISIBLE_DEVICES: ""
       CT2_FORCE_CPU_ISA: AVX2
       ONEDNN_MAX_CPU_ISA: AVX2
       ONEDNN_CPU_ISA_HINTS: PREFER_YMM

@@ -141,6 +141,9 @@ const BOT_MENTION_ALIASES = (process.env.BOT_MENTION_ALIASES || "yui,commit,bot,
   .map(s => s.trim().toLowerCase())
   .filter(Boolean);
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || "Mày là Yui – chat như đang nhắn tin với bạn thân, tự nhiên và thẳng. Xưng hô linh hoạt theo tâm trạng/context: tao/mày khi thân hoặc đang gắt; tôi/bạn hay tui/bạn khi dịu, giải thích bình thường. Không dài dòng trừ bài tập/kỹ thuật. Thề chửi tự nhiên như bạn bè (vcl, đm, vãi...). Ai ngu, nhây, tào lao hay bắt làm chuyện xấu → chửi thẳng, không kiêng.";
+
+// Zalo UID của bot (lấy sau khi login). Dùng để phân biệt "ai quote ai" chính xác.
+let BOT_UID = "";
 const SESSION_FILE = process.env.SESSION_FILE || "./data/session.json";
 const QR_FILE = process.env.QR_FILE || "./data/qr.png";
 const QR_PORT = parseInt(process.env.QR_PORT) || 3000;
@@ -564,6 +567,169 @@ Bao gồm: chủ đề chính, các điểm/thông tin quan trọng, kết luậ
     console.warn(`[YouTubeGemini] fail: ${e.message}`);
     return null;
   }
+}
+
+function pickGeminiVideoModels() {
+  const envVideoList = GEMINI_VIDEO_MODELS.filter(m => m && !/gemma/i.test(m));
+  const base = (envVideoList.length > 0 ? envVideoList : GEMINI_VISION_MODELS).filter(m => m && !/gemma/i.test(m));
+  const preferred = GEMINI_VIDEO_MODEL && !/gemma/i.test(GEMINI_VIDEO_MODEL) ? [GEMINI_VIDEO_MODEL] : [];
+  const seen = new Set();
+  const out = [];
+  for (const m of [...preferred, ...base, ...GEMINI_MODELS]) {
+    if (!m || /gemma/i.test(m) || seen.has(m)) continue;
+    seen.add(m);
+    out.push(resolveModel(m));
+  }
+  return out.length > 0 ? out : ["gemini-2.5-flash"];
+}
+
+async function startGeminiResumableUpload({ apiKey, fileSize, mimeType, displayName }) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(fileSize),
+      "X-Goog-Upload-Header-Content-Type": mimeType,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: displayName || "VIDEO_INPUT" } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`upload_start_http_${res.status}`);
+  const uploadUrl = res.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error("upload_url_missing");
+  return uploadUrl;
+}
+
+async function uploadGeminiFileBytes({ uploadUrl, fileBuf }) {
+  const up = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Length": String(fileBuf.length),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    body: fileBuf,
+    signal: AbortSignal.timeout(45_000),
+  });
+  if (!up.ok) throw new Error(`upload_finalize_http_${up.status}`);
+  const j = await up.json().catch(() => null);
+  const file = j?.file || null;
+  if (!file?.name || !file?.uri) throw new Error("upload_finalize_invalid_response");
+  return file;
+}
+
+async function pollGeminiFileActive({ apiKey, fileName }) {
+  const started = Date.now();
+  const safeName = String(fileName || "").replace(/^\/+/, "");
+  while (Date.now() - started < GEMINI_VIDEO_POLL_TIMEOUT_MS) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${safeName}?key=${apiKey}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) throw new Error(`file_get_http_${res.status}`);
+    const j = await res.json().catch(() => null);
+    const f = j?.file || j;
+    const stateRaw = f?.state;
+    const state = (typeof stateRaw === "string" ? stateRaw : stateRaw?.name || "").toUpperCase();
+    if (state === "ACTIVE") return f;
+    if (state === "FAILED" || state === "ERROR") throw new Error(`file_state_${state || "UNKNOWN"}`);
+    await sleep(GEMINI_VIDEO_POLL_MS);
+  }
+  throw new Error("file_processing_timeout");
+}
+
+function extractGeminiTextFromGenerateResponse(j) {
+  const parts = j?.candidates?.[0]?.content?.parts || [];
+  let text = "";
+  for (const p of parts) if (typeof p?.text === "string") text += p.text;
+  return text.trim();
+}
+
+async function generateGeminiVideoSummary({ apiKey, model, fileUri, mimeType, prompt }) {
+  const payload = {
+    contents: [{
+      role: "user",
+      parts: [
+        { file_data: { file_uri: fileUri, ...(mimeType ? { mime_type: mimeType } : {}) } },
+        { text: prompt },
+      ],
+    }],
+    generationConfig: buildGenConfig(model),
+  };
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(GEMINI_VIDEO_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`generate_http_${res.status}`);
+  const j = await res.json().catch(() => null);
+  const text = extractGeminiTextFromGenerateResponse(j);
+  if (!text) throw new Error("generate_empty_text");
+  return text;
+}
+
+function guessVideoMimeFromUrl(url) {
+  const u = String(url || "");
+  const ext = path.extname(u.split("?")[0]).toLowerCase();
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".gif") return "image/gif";
+  return "video/mp4";
+}
+
+async function describeVideoWithGemini({ videoUrl, mimeType = "video/mp4", prompt, isYouTube = false }) {
+  if (!videoUrl) return null;
+  const models = pickGeminiVideoModels();
+  const keyOrder = API_KEYS.map((_, i) => i);
+  for (const model of models) {
+    for (const ki of keyOrder) {
+      const apiKey = API_KEYS[ki];
+      let tmpVid = null;
+      try {
+        let fileUri = String(videoUrl);
+        let finalMime = mimeType || "video/mp4";
+        if (!finalMime || finalMime === "video/mp4") finalMime = guessVideoMimeFromUrl(fileUri);
+        if (!isYouTube) {
+          fs.mkdirSync(VOICE_TMP_DIR, { recursive: true });
+          const ext = path.extname(fileUri.split("?")[0]).toLowerCase() || ".mp4";
+          tmpVid = path.join(VOICE_TMP_DIR, `gemini_vid_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`);
+          const dl = await fetch(fileUri, { signal: AbortSignal.timeout(30_000) });
+          if (!dl.ok) throw new Error(`video_download_http_${dl.status}`);
+          const buf = Buffer.from(await dl.arrayBuffer());
+          fs.writeFileSync(tmpVid, buf);
+          const uploadUrl = await startGeminiResumableUpload({
+            apiKey,
+            fileSize: buf.length,
+            mimeType: finalMime,
+            displayName: path.basename(tmpVid),
+          });
+          const uploadedFile = await uploadGeminiFileBytes({ uploadUrl, fileBuf: buf });
+          const activeFile = await pollGeminiFileActive({ apiKey, fileName: uploadedFile.name });
+          fileUri = activeFile?.uri || uploadedFile.uri;
+          finalMime = activeFile?.mimeType || uploadedFile.mimeType || finalMime;
+        }
+
+        const text = await generateGeminiVideoSummary({
+          apiKey,
+          model,
+          fileUri,
+          mimeType: finalMime,
+          prompt,
+        });
+        console.log(`[VideoGemini] OK key=#${ki + 1} model=${model}`);
+        return text;
+      } catch (e) {
+        console.warn(`[VideoGemini] key=#${ki + 1} model=${model} fail: ${e.message}`);
+      } finally {
+        if (tmpVid) {
+          try { fs.unlinkSync(tmpVid); } catch { }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // Build context giàu cho các URL trong tin nhắn:
@@ -2587,6 +2753,55 @@ function extractMemoriesFromHistory(history) {
   return memories;
 }
 
+function stripInternalContextLeakage(text) {
+  let t = String(text || "");
+  if (!t) return "";
+  // Remove hidden markers if the model echoes them
+  t = t.replace(/<<<SYS_SENDER:[^>]{1,120}>>>/g, "").trim();
+
+  // Remove [MEMORY: ...] and similar internal blocks
+  for (const mem of extractMemoryTagsFromText(t)) {
+    if (!mem) continue;
+    t = t.split(mem).join("");
+  }
+  t = t.replace(/\[MEMORY:[^\]]{0,600}\]/gi, "");
+  t = t.replace(/\[Ký ức nội bộ[^\]]{0,600}\]/gi, "");
+
+  // Remove other internal context blocks we generate in prompts
+  t = t.replace(/\[QUOTE\/REPLY CONTEXT[\s\S]*?\]\s*/gi, "");
+  t = t.replace(/\[NHẮC:[\s\S]*?\]\s*/gi, "");
+  t = t.replace(/\[REPLY_STRATEGY:[\s\S]*?\]\s*/gi, "");
+  t = t.replace(/\[TÓM TẮT[^\]]*?\][\s\S]*?\]\s*/gi, ""); // defensive
+  t = t.replace(/\[(?:NỘI DUNG (?:VIDEO|FILE)[^\]]*?|VỪA UPLOAD[^\]]*?)\][\s\S]*?\n?---\]\s*/gi, "");
+
+  // Final cleanup
+  t = t.replace(/\n{3,}/g, "\n\n").trim();
+  return t;
+}
+
+function buildReplyStrategyHint({ question, quoteContext, currentSenderName, isGroup }) {
+  const q = String(question || "").trim();
+  const qc = String(quoteContext || "");
+  const lower = q.toLowerCase();
+
+  const isEmptyOrReactionOnly = !q || /^[\s.!?=()]+$/.test(q) || /^(hmm+|uh+|ờ+|ừ+|ok+|oke+|kk+|haha+|=+\)+)$/i.test(q);
+  const isCorrecting = /\b(không phải|sai rồi|đính chính|ý tao là|tao nói là|đã bảo|tôi nói là|mày hiểu sai)\b/i.test(q);
+  const isAsking = /[?？]\s*$/.test(q) || /\b(là gì|tại sao|sao|thế nào|bao nhiêu|hướng dẫn|làm sao)\b/i.test(lower);
+  const isInsultingBot = isGroup && /@yui\b/i.test(q) && /\b(ngu|óc chó|đần|stupid|idiot)\b/i.test(lower);
+  const isTimeSensitiveOverride = /\b(thi|kiểm tra|exam)\b/i.test(q) && /\b(xong rồi|hết rồi|xong|kết thúc|done|finished)\b/i.test(q);
+
+  const parts = [];
+  parts.push("Bạn đang chat trên Zalo, trả lời ngắn gọn, đúng trọng tâm.");
+  if (qc) parts.push("Đây là tin nhắn reply/quote: phải bám đúng nội dung đã quote, không nhầm người nói.");
+  if (isCorrecting) parts.push("Người dùng đang đính chính: hãy acknowledge (nhận lỗi/ghi nhận) rồi hỏi 1 câu ngắn nếu còn thiếu thông tin.");
+  if (isTimeSensitiveOverride) parts.push("Người dùng vừa cập nhật trạng thái sự kiện theo THỜI GIAN (ví dụ 'thi xong rồi'): coi đó là sự thật MỚI NHẤT. Không được nhắc lại plan cũ kiểu 'mai thi' nếu vừa bị phủ định.");
+  if (isEmptyOrReactionOnly && qc) parts.push("Nếu người dùng chỉ phản ứng (không hỏi gì thêm): trả lời theo cảm xúc/phản hồi phù hợp với nội dung được quote, không suy diễn chủ đề mới.");
+  if (isInsultingBot) parts.push(`Bị chửi/khích: ưu tiên bình tĩnh + hài nhẹ, KHÔNG leo thang. Có thể đáp: "ok, nói rõ mày muốn gì" thay vì chửi lại.`);
+  if (isAsking) parts.push("Nếu là câu hỏi: trả lời trực tiếp, nếu mơ hồ thì hỏi 1 câu làm rõ.");
+  parts.push(`Đừng bao giờ lộ các tag nội bộ như [MEMORY: ...], [QUOTE/REPLY CONTEXT], <<<SYS_SENDER:...>>>.`);
+  return `[REPLY_STRATEGY: ${parts.join(" ")}]\n`;
+}
+
 /** Text inside [NỘI DUNG VIDEO ... :\n ... \n---] from Gemini/local video understanding (extraContext). */
 function extractVideoUnderstandingSnippet(s) {
   if (!s || typeof s !== "string") return null;
@@ -3065,11 +3280,13 @@ function extractQuoteData(message) {
   if (!quote) return { contextText: null, imageUrl: null, fileUrl: null, fileName: null, voiceUrl: null, quotedSenderName: null };
 
   // Người gửi tin nhắn GỐC (người bị reply)
-  const quotedSenderName = quote.dName || quote.uidFrom || quote.fromUid || quote.uid || "Ai đó";
   const quotedSenderUid = String(quote.uidFrom || quote.fromUid || quote.uid || "").trim();
+  const isQuotedFromBot = !!(BOT_UID && quotedSenderUid && quotedSenderUid === BOT_UID);
+  const quotedSenderName = isQuotedFromBot ? "Yui" : (quote.dName || quote.uidFrom || quote.fromUid || quote.uid || "Ai đó");
 
   // Người đang reply (người gửi tin nhắn hiện tại)
   const currentSenderName = message.data?.dName || message.data?.uidFrom || "Ai đó";
+  const currentSenderUid = String(message.data?.uidFrom || message.data?.fromUid || "").trim();
 
   let text = "";
   if (typeof quote.content === "string") text = quote.content.trim();
@@ -3155,7 +3372,7 @@ function extractQuoteData(message) {
   // Bot phải biết: người đang nói chuyện với mình là currentSender, không phải quotedSender
   const contextText =
     `[QUOTE/REPLY CONTEXT – ĐỌC KỸ TRƯỚC KHI TRẢ LỜI:
-  → "${currentSenderName}" đang REPLY TIN NHẮN CỦA "${quotedSenderName}": ${quotedParts.join(" ")}
+  → "${currentSenderName}" (uid=${currentSenderUid || "unknown"}) đang REPLY TIN NHẮN CỦA "${quotedSenderName}" (uid=${quotedSenderUid || "unknown"}${isQuotedFromBot ? "; đây là tin nhắn của Yui" : ""}): ${quotedParts.join(" ")}
   → Người Yui cần trả lời LÀ "${currentSenderName}" (người vừa gửi tin nhắn này).
   → "${quotedSenderName}" là người được quote (không phải người đang chat với Yui lúc này).
   → Nếu "${currentSenderName}" không kèm câu hỏi/nội dung (ví dụ: chỉ gửi "(!)", "=))", "hmm", hoặc để trống) → họ đang BIỂU ĐẠT PHẢN ỨNG/ĐỒNG Ý/NHẬN XÉT với nội dung được quote. Yui đọc context để hiểu và trả lời phù hợp.
@@ -3166,6 +3383,7 @@ function extractQuoteData(message) {
     imageUrl, fileUrl, fileName, voiceUrl, quoteVideoUrl,
     quotedSenderName,
     quotedSenderUid,
+    isQuotedFromBot,
   };
 }
 
@@ -4658,12 +4876,24 @@ async function handleMessage(api, message) {
         topicGuard = `[CHÚ Ý: "${sender}" vừa tag Yui để chào hỏi. Đây là cuộc trò chuyện MỚI. KHÔNG nhắc đến hay tiếp tục bất kỳ chủ đề nào của tin nhắn trước. Chỉ chào lại "${sender}" ngắn gọn, tự nhiên.]\n`;
       }
 
-      ctx = senderMarker + buildRecentBotActionsContext(tid) + toneCtx + knownUsersCtx + mentionCtx + topicGuard + ctx;
+      const strategyHint = buildReplyStrategyHint({
+        question: sanitizedQuestion,
+        quoteContext,
+        currentSenderName: sender,
+        isGroup: true,
+      });
+      ctx = senderMarker + strategyHint + buildRecentBotActionsContext(tid) + toneCtx + knownUsersCtx + mentionCtx + topicGuard + ctx;
     } else {
       // DM: cũng inject senderMarker để model luôn biết tên người dùng
       // message.data.dName là displayName từ Zalo API (đã xác thực server-side)
       const senderMarker = `<<<SYS_SENDER:${senderUid}|${sender}>>>\n`;
-      ctx = senderMarker + buildRecentBotActionsContext(tid) + ctx;
+      const strategyHint = buildReplyStrategyHint({
+        question: sanitizedQuestion,
+        quoteContext,
+        currentSenderName: sender,
+        isGroup: false,
+      });
+      ctx = senderMarker + strategyHint + buildRecentBotActionsContext(tid) + ctx;
     }
 
     const tModel0 = Date.now();
@@ -4701,6 +4931,8 @@ async function handleMessage(api, message) {
     // Strip bracket-emoticons như [=.] [=.=] [:/] [:|] etc. mà model đôi khi generate
     // (model được dặn không dùng emoticon trong [] nhưng vẫn slip through)
     reply = reply.replace(/\[=\.=?\]/g, '').replace(/\[:\/?[A-Za-z|.]\]/g, '').replace(/\[\s*=+\s*\]/g, '').trim();
+    // Absolute guard: never leak internal context blocks to chat output.
+    reply = stripInternalContextLeakage(reply);
     if (reply) {
       console.log(`  [REPLY] "${reply.replace(/\n/g, "\\n")}"`);
       // Build styled message: RAG mode dùng full format, chat thường minimal
@@ -5979,6 +6211,10 @@ async function main() {
   loadVieneuPresets(); // load VieNeu-TTS built-in preset voices
   await probeEmbedding(); // kiểm tra embedding ngay khi khởi động
   const api = await getApi();
+  try {
+    BOT_UID = String(api.getOwnId?.() || "").trim();
+    if (BOT_UID) console.log(`[Bot] own_uid=${BOT_UID}`);
+  } catch { }
 
   // ── Message handler ────────────────────────────────────────────────────────
   // withThreadLock đảm bảo mỗi thread xử lý tuần tự:

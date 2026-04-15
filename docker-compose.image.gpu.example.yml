@@ -10,7 +10,13 @@ services:
     ports:
       - "3000:3000"
       - "3001:3001"
-    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       # Runtime / paths
       TZ: Asia/Ho_Chi_Minh
@@ -36,7 +42,10 @@ services:
       # GPU runtime (không để trong .env để tránh rối)
       VIENEU_GPU_ENABLED: "true"
       NVIDIA_VISIBLE_DEVICES: all
-      CUDA_VISIBLE_DEVICES: "0"
+      # Route các luồng xử lý AI tới GPU 0 mặc định (đổi thành 1, 2... nếu có nhiều card)
+      ASR_CUDA_VISIBLE_DEVICES: "0"
+      VOICE_CUDA_VISIBLE_DEVICES: "0"
+      VIDEO_CUDA_VISIBLE_DEVICES: "0"
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
 
       # ASR local (GPU)
@@ -101,7 +110,6 @@ services:
       - ./torch_cache:/app/torch_cache
       - ./models:/app/models
       - ./voice-samples/data/ref_audio:/app/voice_samples
-    gpus: all
 
   # Bỏ comment để phát VOICE_HOST_URL ra URL công khai qua Cloudflare Tunnel:
   # tunnel:

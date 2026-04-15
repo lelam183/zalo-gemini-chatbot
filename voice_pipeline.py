@@ -140,9 +140,10 @@ def vieneu_tts_to_wav(text: str, out_wav: str, ref_audio_override: str | None = 
 
     def _supports_vieneu_gpu() -> bool:
         """
-        VieNeu turbo uses ONNXRuntime CUDA EP + cuDNN. Newer stacks can fail on older GPUs
-        (notably Pascal, e.g. GTX 1060 sm_61) with CUDNN_STATUS_* errors. We detect and
-        auto-fallback to CPU to keep the bot functional on mixed-GPU hosts.
+        Check GPU availability for VieNeu TTS.
+        VieNeu Turbo uses ONNXRuntime CUDA EP which works on Pascal (CC 6.x) and above.
+        We allow CC 6.x but provide env override VIENEU_GPU_MIN_CC to tune if needed.
+        On actual cuDNN failures, _run_vieneu will catch and return False → CPU fallback.
         """
         if os.environ.get("VIENEU_GPU_ENABLED", "false").strip().lower() != "true":
             return False
@@ -151,17 +152,23 @@ def vieneu_tts_to_wav(text: str, out_wav: str, ref_audio_override: str | None = 
             if not torch.cuda.is_available():
                 return False
             major, minor = torch.cuda.get_device_capability(0)
-            # Pascal is compute capability 6.x. Prefer CPU fallback for stability.
-            if major < 7:
+            # Allow override via env: VIENEU_GPU_MIN_CC=6 (default) to force GPU on Pascal
+            min_cc = int(os.environ.get("VIENEU_GPU_MIN_CC", "6"))
+            if major < min_cc:
                 print(
-                    f"[voice_pipeline] GPU compute_capability={major}.{minor} (older GPU) → fallback to CPU for VieNeu",
+                    f"[voice_pipeline] GPU compute_capability={major}.{minor} < min={min_cc} → fallback to CPU",
                     file=sys.stderr,
                 )
                 return False
+            print(f"[voice_pipeline] GPU compute_capability={major}.{minor} → using GPU", file=sys.stderr)
             return True
         except Exception as e:
             print(f"[voice_pipeline] GPU capability check failed: {e} → fallback to CPU", file=sys.stderr)
             return False
+
+    def _gpu_strict() -> bool:
+        # If true: do NOT fallback to CPU when GPU fails.
+        return os.environ.get("VIENEU_GPU_STRICT", "false").strip().lower() == "true"
 
     def _run_vieneu(device: str) -> bool:
         use_gpu_local = device == "cuda"
@@ -208,13 +215,19 @@ def vieneu_tts_to_wav(text: str, out_wav: str, ref_audio_override: str | None = 
         return os.path.exists(out_wav) and os.path.getsize(out_wav) > 500
         return True
 
-    try:
-        # Prefer GPU when enabled and supported, otherwise CPU.
-        if _supports_vieneu_gpu():
+    # Prefer GPU when enabled and capable; on failure fallback to CPU.
+    if _supports_vieneu_gpu():
+        try:
             if _run_vieneu("cuda"):
                 return True
-            print("[voice_pipeline] VieNeu GPU failed → retry on CPU", file=sys.stderr)
-            return _run_vieneu("cpu")
+        except Exception as e:
+            if _gpu_strict():
+                print(f"[voice_pipeline] VieNeu GPU strict mode error: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                return False
+            print(f"[voice_pipeline] VieNeu GPU failed ({e}) → retry on CPU", file=sys.stderr)
+    # CPU path (default or fallback)
+    try:
         return _run_vieneu("cpu")
     except Exception as e:
         print(f"[voice_pipeline] VieNeu error: {e}", file=sys.stderr)

@@ -9,7 +9,10 @@
 # Local compose (machine-specific)
 docker-compose.yml
 docker-compose.gpu.yml
+compose-bot*.yaml
 !docker-compose.example.yml
+!docker-compose.cpu.example.yml
+!docker-compose.gpu.example.yml
 !docker-compose.image.cpu.example.yml
 !docker-compose.image.gpu.example.yml
 
